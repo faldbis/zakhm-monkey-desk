@@ -1,0 +1,6 @@
+pandas>=2.0
+numpy>=1.24
+requests>=2.28
+# optional: voiceover + MP4 rendering
+edge-tts>=6.1
+playwright>=1.40

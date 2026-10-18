@@ -1,0 +1,27 @@
+{
+ "date": "2026-10-15",
+ "day": 7,
+ "start": 92.14,
+ "end": 92.23,
+ "pct": 0.1,
+ "trades": 1,
+ "wins": 1,
+ "losses": 0,
+ "skipped": [
+  {
+   "time": "2026-10-15 03:00:00+00:00",
+   "sym": "ETHUSDT",
+   "side": "SELL",
+   "reason": "position already open on symbol"
+  }
+ ],
+ "events_in_day": 9,
+ "params": {
+  "lev": 20,
+  "margin_pct": 0.1,
+  "fee": 0.0005,
+  "slip": 0.0002,
+  "mmr": 0.005,
+  "line_mode": "body"
+ }
+}

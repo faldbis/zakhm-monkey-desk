@@ -1,0 +1,15 @@
+# local / large
+.venv/
+__pycache__/
+*.pyc
+frames/
+vo/
+strategy/data/
+*.mp4
+*.wav
+render.log
+whisper.txt
+full*.png
+shot.py
+compare.png
+strategy/fetch.log

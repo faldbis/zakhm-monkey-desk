@@ -1,0 +1,402 @@
+//@version=5
+// OSMA Momentum Zones  -  "IV Walls" style zones built from the زخم momentum lines
+// OSMA = (EMA fast - EMA slow) - EMA(signal) of that diff   (defaults 132 / 32 / 16, same as zakhm_signal.py)
+// Buy zone  : bar with the highest OSMA of each positive wave  -> low .. body (or low + ATR*k)
+// Sell zone : bar with the lowest  OSMA of each negative wave  -> body .. high (or high - ATR*k)
+// A zone is confirmed when its wave ends (same as lines_full in the Python scanner) and extends right
+// until a close of its own timeframe goes through the line (low for buy zones, high for sell zones).
+// 5-step setup: zone -> close through (break) -> close back (return) -> opposite zone of the same TF
+// forms after the break -> yellow entry zone is armed -> chart close crosses the line again = entry.
+indicator("OSMA Momentum Zones", shorttitle="OSMA Zones", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500, max_polylines_count=100)
+
+// ───────── Inputs ─────────
+grpO = "OSMA (زخم)"
+fastLen = input.int(132, "Fast EMA", minval=1, group=grpO)
+slowLen = input.int(32, "Slow EMA", minval=1, group=grpO)
+sigLen  = input.int(16, "Signal EMA", minval=1, group=grpO)
+
+grpT = "Timeframes (lower than chart are skipped)"
+tf1 = input.timeframe("16",  "TF 1", inline="t1", group=grpT)
+on1 = input.bool(true, "On", inline="t1", group=grpT)
+tf2 = input.timeframe("66", "TF 2", inline="t2", group=grpT)
+on2 = input.bool(true, "On", inline="t2", group=grpT)
+tf3 = input.timeframe("396",   "TF 3", inline="t3", group=grpT)
+on3 = input.bool(true, "On", inline="t3", group=grpT)
+tf4 = input.timeframe("D",   "TF 4", inline="t4", group=grpT)
+on4 = input.bool(true, "On", inline="t4", group=grpT)
+
+grpZ = "Zones"
+maxZ         = input.int(20, "Max zones per side (per TF)", minval=1, maxval=50, group=grpZ)
+showBroken   = input.bool(true, "Show broken zones (off = delete on break)", group=grpZ)
+heightMode   = input.string("ATR fraction", "Zone height", options=["ATR fraction", "Wick-to-body"], group=grpZ)
+atrLen       = input.int(14, "ATR length", minval=1, group=grpZ)
+atrMult      = input.float(0.25, "ATR multiplier", minval=0.01, step=0.05, group=grpZ)
+showTxt      = input.bool(true, "Show TF + OSMA value on zones", group=grpZ)
+buyCol       = input.color(color.new(#4FC3F7, 75), "Buy zone", group=grpZ)
+sellCol      = input.color(color.new(#EF5350, 75), "Sell zone", group=grpZ)
+brokenTransp = input.int(92, "Broken zone transparency", minval=0, maxval=100, group=grpZ)
+
+grpE = "Entry setup (5 steps)"
+showEntry = input.bool(true, "Show entry zones + signals", group=grpE)
+entryCol  = input.color(color.new(#FFEB3B, 60), "Entry zone", group=grpE)
+
+grpW = "Walls profile (right of last bar)"
+showWalls   = input.bool(true, "Show walls", group=grpW)
+wallOffset  = input.int(20, "Offset from last bar (bars)", minval=2, maxval=200, group=grpW)
+wallWidth   = input.int(40, "Max wall length (bars)", minval=5, maxval=250, group=grpW)
+wallMode    = input.string("Stacked", "Wall layout", options=["Stacked", "At zone price"], group=grpW)
+normMode    = input.string("Per TF", "Normalize |OSMA|", options=["Per TF", "Global"], group=grpW)
+maxWalls    = input.int(20, "Max walls (active zones nearest to price)", minval=1, maxval=60, group=grpW)
+wallBuyCol  = input.color(color.new(#2962FF, 30), "Buy wall", group=grpW)
+wallSellCol = input.color(color.new(#FF9800, 30), "Sell wall", group=grpW)
+showLinks   = input.bool(true, "Curved links zone -> wall", group=grpW)
+showConf    = input.bool(true, "Confluence links (overlapping zones of different TFs)", group=grpW)
+maxConf     = input.int(30, "Max confluence links", minval=1, maxval=80, group=grpW)
+confCol     = input.color(color.new(#FFD600, 10), "Confluence colour", group=grpW)
+
+atrMode = heightMode == "ATR fraction"
+
+// ───────── Per-timeframe OSMA wave engine (runs inside request.security) ─────────
+// Returns the last COMPLETED buy / sell wave: peak-bar time, zone top/bottom, peak OSMA, and the
+// time the line was already closed through before the wave ended (na if not), plus the TF close/time.
+// off = 1 with lookahead_on -> only confirmed higher-TF bars (no repaint). off = 0 for the chart TF.
+f_osma(simple int fl, simple int sl, simple int sg, simple int aLen, simple float aMult, simple bool aMode, simple int off) =>
+    m = ta.ema(close, fl) - ta.ema(close, sl)
+    o = m - ta.ema(m, sg)
+    a = ta.atr(aLen)
+    bool prevPos = o[1] > 0
+    bool prevNeg = o[1] < 0
+    var float bPk  = na
+    var int   bT   = na
+    var float bTop = na
+    var float bBot = na
+    var int   bBrk = na
+    var float sPk  = na
+    var int   sT   = na
+    var float sTop = na
+    var float sBot = na
+    var int   sBrk = na
+    var int   lbT   = na
+    var float lbTop = na
+    var float lbBot = na
+    var float lbPk  = na
+    var int   lbBrk = na
+    var int   lsT   = na
+    var float lsTop = na
+    var float lsBot = na
+    var float lsPk  = na
+    var int   lsBrk = na
+    // positive wave -> buy zone at the low of the max-OSMA bar
+    if o > 0
+        if not prevPos or o > bPk
+            bPk  := o
+            bT   := time
+            bBot := low
+            bTop := math.max(aMode ? low + a * aMult : math.min(open, close), low + syminfo.mintick)
+            bBrk := na
+        else if na(bBrk) and close < bBot
+            bBrk := time
+    if not (o > 0) and prevPos and not na(bPk)
+        if na(bBrk) and close < bBot
+            bBrk := time
+        lbT   := bT
+        lbTop := bTop
+        lbBot := bBot
+        lbPk  := bPk
+        lbBrk := bBrk
+    // negative wave -> sell zone at the high of the min-OSMA bar
+    if o < 0
+        if not prevNeg or o < sPk
+            sPk  := o
+            sT   := time
+            sTop := high
+            sBot := math.min(aMode ? high - a * aMult : math.max(open, close), high - syminfo.mintick)
+            sBrk := na
+        else if na(sBrk) and close > sTop
+            sBrk := time
+    if not (o < 0) and prevNeg and not na(sPk)
+        if na(sBrk) and close > sTop
+            sBrk := time
+        lsT   := sT
+        lsTop := sTop
+        lsBot := sBot
+        lsPk  := sPk
+        lsBrk := sBrk
+    [lbT[off], lbTop[off], lbBot[off], lbPk[off], lbBrk[off], lsT[off], lsTop[off], lsBot[off], lsPk[off], lsBrk[off], close[off], time[off]]
+
+f_off(string tf) => tf == "" or tf == timeframe.period ? 0 : 1
+f_ok(bool on, string tf) => on and (tf == "" or timeframe.in_seconds(tf) >= timeframe.in_seconds(timeframe.period))
+f_tfName(string tf) =>
+    string t = tf == "" ? timeframe.period : tf
+    int s = timeframe.in_seconds(t)
+    s < 3600 ? str.tostring(s / 60, "#") + "m" : s < 86400 ? str.tostring(s / 3600, "#") + "H" : t
+
+off1 = f_off(tf1)
+off2 = f_off(tf2)
+off3 = f_off(tf3)
+off4 = f_off(tf4)
+ok1 = f_ok(on1, tf1)
+ok2 = f_ok(on2, tf2)
+ok3 = f_ok(on3, tf3)
+ok4 = f_ok(on4, tf4)
+
+[b1T, b1Top, b1Bot, b1Pk, b1Brk, s1T, s1Top, s1Bot, s1Pk, s1Brk, c1, ct1] = request.security(syminfo.tickerid, tf1, f_osma(fastLen, slowLen, sigLen, atrLen, atrMult, atrMode, off1), lookahead=barmerge.lookahead_on)
+[b2T, b2Top, b2Bot, b2Pk, b2Brk, s2T, s2Top, s2Bot, s2Pk, s2Brk, c2, ct2] = request.security(syminfo.tickerid, tf2, f_osma(fastLen, slowLen, sigLen, atrLen, atrMult, atrMode, off2), lookahead=barmerge.lookahead_on)
+[b3T, b3Top, b3Bot, b3Pk, b3Brk, s3T, s3Top, s3Bot, s3Pk, s3Brk, c3, ct3] = request.security(syminfo.tickerid, tf3, f_osma(fastLen, slowLen, sigLen, atrLen, atrMult, atrMode, off3), lookahead=barmerge.lookahead_on)
+[b4T, b4Top, b4Bot, b4Pk, b4Brk, s4T, s4Top, s4Bot, s4Pk, s4Brk, c4, ct4] = request.security(syminfo.tickerid, tf4, f_osma(fastLen, slowLen, sigLen, atrLen, atrMult, atrMode, off4), lookahead=barmerge.lookahead_on)
+
+// new completed wave / new confirmed TF close (computed every bar for clean history)
+nb1 = not na(b1T) and (na(b1T[1]) or b1T != b1T[1])
+ns1 = not na(s1T) and (na(s1T[1]) or s1T != s1T[1])
+nc1 = not na(ct1) and (na(ct1[1]) or ct1 != ct1[1])
+nb2 = not na(b2T) and (na(b2T[1]) or b2T != b2T[1])
+ns2 = not na(s2T) and (na(s2T[1]) or s2T != s2T[1])
+nc2 = not na(ct2) and (na(ct2[1]) or ct2 != ct2[1])
+nb3 = not na(b3T) and (na(b3T[1]) or b3T != b3T[1])
+ns3 = not na(s3T) and (na(s3T[1]) or s3T != s3T[1])
+nc3 = not na(ct3) and (na(ct3[1]) or ct3 != ct3[1])
+nb4 = not na(b4T) and (na(b4T[1]) or b4T != b4T[1])
+ns4 = not na(s4T) and (na(s4T[1]) or s4T != s4T[1])
+nc4 = not na(ct4) and (na(ct4[1]) or ct4 != ct4[1])
+
+// ───────── Zone objects ─────────
+type Zone
+    int   tf
+    bool  isBuy
+    float top
+    float bot
+    float lvl
+    float osma
+    int   t0
+    int   state    // 0 active, 1 broken, 2 returned, 3 entry armed, 4 entry taken
+    int   brokeT
+    bool  oppSeen
+    box   bx
+    box   ebx
+
+var array<Zone>     zones      = array.new<Zone>()
+var array<box>      wallBoxes  = array.new<box>()
+var array<label>    wallLabels = array.new<label>()
+var array<polyline> wallPolys  = array.new<polyline>()
+var array<string>   tfNames    = array.from(f_tfName(tf1), f_tfName(tf2), f_tfName(tf3), f_tfName(tf4))
+
+f_fmt(float v) => str.tostring(v, "#.#####")
+
+f_break(Zone z, int t) =>
+    z.state  := 1
+    z.brokeT := t
+    if not na(z.bx)
+        if showBroken
+            color c = z.isBuy ? buyCol : sellCol
+            box.set_right(z.bx, t)
+            box.set_bgcolor(z.bx, color.new(c, brokenTransp))
+            box.set_border_color(z.bx, color.new(c, math.max(0, brokenTransp - 20)))
+            box.set_border_style(z.bx, line.style_dotted)
+        else
+            box bOld = z.bx
+            z.bx := na
+            box.delete(bOld)
+    z
+
+f_newZone(int k, bool isBuy, int t0, float top, float bot, float pk, int brk) =>
+    color  c   = isBuy ? buyCol : sellCol
+    string txt = showTxt ? array.get(tfNames, k) + "  " + f_fmt(pk) : ""
+    box b = box.new(t0, top, time, bot, xloc=xloc.bar_time, border_color=color.new(c, 40), bgcolor=c, text=txt, text_size=size.tiny, text_color=color.new(c, 0), text_halign=text.align.right, text_valign=text.align.center)
+    Zone z = Zone.new(k, isBuy, top, bot, isBuy ? bot : top, pk, t0, 0, na, false, b, na)
+    if not na(brk)
+        f_break(z, brk)
+    // step 3 helper: an opposite zone of the same TF formed after older zones were broken
+    for oz in zones
+        if oz.tf == k and oz.isBuy != isBuy and (oz.state == 1 or oz.state == 2)
+            oz.oppSeen := true
+    array.push(zones, z)
+    // cap per TF / side: drop the oldest
+    int cnt   = 0
+    int first = -1
+    for [i, oz] in zones
+        if oz.tf == k and oz.isBuy == isBuy
+            cnt += 1
+            if first < 0
+                first := i
+    if cnt > maxZ and first >= 0
+        Zone old = array.remove(zones, first)
+        if not na(old.bx)
+            box.delete(old.bx)
+        if old.state == 3 and not na(old.ebx)
+            box.delete(old.ebx)
+    z
+
+f_arm(Zone z) =>
+    z.state := 3
+    string side = z.isBuy ? "SELL" : "BUY"
+    if showEntry
+        z.ebx := box.new(time, z.top, time, z.bot, xloc=xloc.bar_time, border_color=color.new(entryCol, 0), border_width=2, bgcolor=entryCol, text=side + " setup " + array.get(tfNames, z.tf), text_size=size.tiny, text_color=color.black, text_halign=text.align.left)
+    alert("OSMA Zones: " + syminfo.ticker + " " + side + " setup armed (" + array.get(tfNames, z.tf) + " line " + str.tostring(z.lvl, format.mintick) + ")", alert.freq_once_per_bar_close)
+    z
+
+f_entry(Zone z) =>
+    z.state := 4
+    string side = z.isBuy ? "SELL" : "BUY"
+    string tfn  = array.get(tfNames, z.tf)
+    if not na(z.ebx)
+        box.set_right(z.ebx, time)
+        box.set_text(z.ebx, side + " " + tfn)
+    if showEntry
+        label.new(bar_index, z.isBuy ? high : low, side + " " + tfn + "\n" + str.tostring(close, format.mintick), style=z.isBuy ? label.style_label_down : label.style_label_up, color=color.new(#FFD600, 0), textcolor=color.black, size=size.small)
+    alert("OSMA Zones: " + syminfo.ticker + " " + side + " entry @ " + str.tostring(close, format.mintick) + " (" + tfn + " zone " + str.tostring(z.lvl, format.mintick) + ")", alert.freq_once_per_bar_close)
+    z
+
+// ───────── Bar-close logic ─────────
+if barstate.isconfirmed
+    // 1) new zones (wave just ended)
+    if ok1 and nb1
+        f_newZone(0, true,  b1T, b1Top, b1Bot, b1Pk, b1Brk)
+    if ok1 and ns1
+        f_newZone(0, false, s1T, s1Top, s1Bot, s1Pk, s1Brk)
+    if ok2 and nb2
+        f_newZone(1, true,  b2T, b2Top, b2Bot, b2Pk, b2Brk)
+    if ok2 and ns2
+        f_newZone(1, false, s2T, s2Top, s2Bot, s2Pk, s2Brk)
+    if ok3 and nb3
+        f_newZone(2, true,  b3T, b3Top, b3Bot, b3Pk, b3Brk)
+    if ok3 and ns3
+        f_newZone(2, false, s3T, s3Top, s3Bot, s3Pk, s3Brk)
+    if ok4 and nb4
+        f_newZone(3, true,  b4T, b4Top, b4Bot, b4Pk, b4Brk)
+    if ok4 and ns4
+        f_newZone(3, false, s4T, s4Top, s4Bot, s4Pk, s4Brk)
+
+    // 2) break / return / arm / entry
+    array<float> tfC = array.from(c1, c2, c3, c4)
+    array<bool>  tfN = array.from(nc1, nc2, nc3, nc4)
+    array<int>   tfT = array.from(ct1, ct2, ct3, ct4)
+    for z in zones
+        float cc  = array.get(tfC, z.tf)
+        bool  nw  = array.get(tfN, z.tf)
+        float dir = z.isBuy ? -1.0 : 1.0     // direction of the "explosion" through the line
+        if z.state == 0
+            if nw and (cc - z.lvl) * dir > 0
+                f_break(z, array.get(tfT, z.tf))
+        else if z.state == 1
+            if nw and (cc - z.lvl) * dir < 0
+                z.state := 2
+                if z.oppSeen
+                    f_arm(z)
+        else if z.state == 2
+            if z.oppSeen
+                f_arm(z)
+        else if z.state == 3
+            if (close - z.lvl) * dir > 0 and (close[1] - z.lvl) * dir <= 0
+                f_entry(z)
+
+// ───────── Last-bar drawing: extend zones + walls profile + links ─────────
+if barstate.islast
+    for z in zones
+        if z.state == 0 and not na(z.bx)
+            box.set_right(z.bx, time)
+        if z.state == 3 and not na(z.ebx)
+            box.set_right(z.ebx, time)
+
+    for b in wallBoxes
+        box.delete(b)
+    array.clear(wallBoxes)
+    for l in wallLabels
+        label.delete(l)
+    array.clear(wallLabels)
+    for p in wallPolys
+        polyline.delete(p)
+    array.clear(wallPolys)
+
+    if showWalls
+        // active zones, nearest to price first
+        array<int>   idx  = array.new<int>()
+        array<float> dist = array.new<float>()
+        for [i, z] in zones
+            if z.state == 0
+                array.push(idx, i)
+                array.push(dist, math.abs((z.top + z.bot) / 2 - close))
+        int n = array.size(idx)
+        if n > 0
+            array<int>   ord  = array.sort_indices(dist, order.ascending)
+            int          m    = math.min(n, maxWalls)
+            array<Zone>  sel  = array.new<Zone>()
+            array<float> mids = array.new<float>()
+            for k = 0 to m - 1
+                Zone z = array.get(zones, array.get(idx, array.get(ord, k)))
+                array.push(sel, z)
+                array.push(mids, (z.top + z.bot) / 2)
+            array<int> pord = array.sort_indices(mids, order.descending)
+
+            // normalisation + price span
+            array<float> tfMax = array.from(0.0, 0.0, 0.0, 0.0)
+            float gMax = 0.0
+            float hi   = -1e300
+            float lo   = 1e300
+            for z in sel
+                float av = math.abs(z.osma)
+                if av > array.get(tfMax, z.tf)
+                    array.set(tfMax, z.tf, av)
+                gMax := math.max(gMax, av)
+                hi   := math.max(hi, z.top)
+                lo   := math.min(lo, z.bot)
+            float span = hi - lo
+            float rowH = m > 1 ? span / m * 0.6 : span
+
+            // confluence: how many distinct TFs overlap each zone (itself included)
+            array<int> confN = array.new<int>(m, 1)
+            for i = 0 to m - 1
+                Zone zi = array.get(sel, i)
+                array<bool> seen = array.from(false, false, false, false)
+                array.set(seen, zi.tf, true)
+                for j = 0 to m - 1
+                    Zone zj = array.get(sel, j)
+                    if j != i and zj.tf != zi.tf and zj.bot <= zi.top and zi.bot <= zj.top
+                        array.set(seen, zj.tf, true)
+                int c = 0
+                for s in seen
+                    c += s ? 1 : 0
+                array.set(confN, i, c)
+
+            // wall rows
+            array<float> rowY = array.new<float>(m, na)
+            for r = 0 to m - 1
+                int   i = array.get(pord, r)
+                float y = wallMode == "Stacked" ? (m > 1 ? hi - r * span / (m - 1) : (hi + lo) / 2) : array.get(mids, i)
+                array.set(rowY, i, y)
+
+            int x0 = bar_index + wallOffset
+            for i = 0 to m - 1
+                Zone   z    = array.get(sel, i)
+                float  nrm  = normMode == "Per TF" ? array.get(tfMax, z.tf) : gMax
+                float  frac = nrm > 0 ? math.abs(z.osma) / nrm : 0.0
+                int    len  = math.max(1, math.round(frac * wallWidth))
+                float  y    = array.get(rowY, i)
+                float  wTop = wallMode == "Stacked" ? y + rowH / 2 : z.top
+                float  wBot = wallMode == "Stacked" ? y - rowH / 2 : z.bot
+                int    cf   = array.get(confN, i)
+                bool   conf = cf >= 2
+                color  wc   = z.isBuy ? wallBuyCol : wallSellCol
+                array.push(wallBoxes, box.new(x0, wTop, x0 + len, wBot, xloc=xloc.bar_index, border_color=conf ? confCol : wc, border_width=conf ? 2 : 1, bgcolor=wc))
+                string t = array.get(tfNames, z.tf) + " " + f_fmt(z.osma) + (conf ? "  ★" + str.tostring(cf) + "TF" : "")
+                array.push(wallLabels, label.new(x0 + len, y, t, xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=conf ? confCol : color.new(wc, 0), size=size.tiny))
+                if showLinks
+                    float zm = (z.top + z.bot) / 2
+                    array<chart.point> pts = array.from(chart.point.from_index(bar_index, zm), chart.point.from_index(bar_index + math.round(wallOffset * 0.4), zm), chart.point.from_index(bar_index + math.round(wallOffset * 0.6), y), chart.point.from_index(x0, y))
+                    array.push(wallPolys, polyline.new(pts, curved=true, closed=false, xloc=xloc.bar_index, line_color=conf ? confCol : color.new(wc, 50), line_width=conf ? cf : 1))
+
+            // confluence arcs between wall rows + highlight of the overlapping price band
+            if showConf and m > 1
+                int budget = math.min(maxConf, 100 - array.size(wallPolys))
+                int drawn  = 0
+                int bulge  = math.max(2, math.round(wallOffset * 0.35))
+                for i = 0 to m - 2
+                    Zone zi = array.get(sel, i)
+                    for j = i + 1 to m - 1
+                        Zone zj = array.get(sel, j)
+                        if drawn < budget and zj.tf != zi.tf and zj.bot <= zi.top and zi.bot <= zj.top
+                            float yi = array.get(rowY, i)
+                            float yj = array.get(rowY, j)
+                            array<chart.point> cp = array.from(chart.point.from_index(x0, yi), chart.point.from_index(x0 - bulge, (yi + yj) / 2), chart.point.from_index(x0, yj))
+                            array.push(wallPolys, polyline.new(cp, curved=true, closed=false, xloc=xloc.bar_index, line_color=confCol, line_width=math.max(2, math.max(array.get(confN, i), array.get(confN, j)))))
+                            array.push(wallBoxes, box.new(bar_index, math.min(zi.top, zj.top), x0, math.max(zi.bot, zj.bot), xloc=xloc.bar_index, border_color=confCol, border_width=1, bgcolor=color.new(confCol, 85)))
+                            drawn += 1

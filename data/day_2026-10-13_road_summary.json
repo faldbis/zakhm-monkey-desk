@@ -1,0 +1,27 @@
+{
+ "date": "2026-10-13",
+ "day": 5,
+ "start": 100.17,
+ "end": 92.23,
+ "pct": -7.93,
+ "trades": 3,
+ "wins": 1,
+ "losses": 2,
+ "skipped": [
+  {
+   "time": "2026-10-13 04:00:00+00:00",
+   "sym": "SOLUSDT",
+   "side": "BUY",
+   "reason": "SL 107.86 not beyond entry"
+  }
+ ],
+ "events_in_day": 19,
+ "params": {
+  "lev": 20,
+  "margin_pct": 0.1,
+  "fee": 0.0005,
+  "slip": 0.0002,
+  "mmr": 0.005,
+  "line_mode": "body"
+ }
+}

@@ -1,0 +1,33 @@
+{
+ "date": "2026-10-12",
+ "day": 4,
+ "start": 100.0,
+ "end": 100.17,
+ "pct": 0.17,
+ "trades": 2,
+ "wins": 1,
+ "losses": 1,
+ "skipped": [
+  {
+   "time": "2026-10-12 22:00:00+00:00",
+   "sym": "BTCUSDT",
+   "side": "SELL",
+   "reason": "position already open on symbol"
+  },
+  {
+   "time": "2026-10-12 22:00:00+00:00",
+   "sym": "SOLUSDT",
+   "side": "SELL",
+   "reason": "position already open on symbol"
+  }
+ ],
+ "events_in_day": 16,
+ "params": {
+  "lev": 20,
+  "margin_pct": 0.1,
+  "fee": 0.0005,
+  "slip": 0.0002,
+  "mmr": 0.005,
+  "line_mode": "body"
+ }
+}

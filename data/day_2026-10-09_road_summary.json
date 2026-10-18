@@ -1,0 +1,27 @@
+{
+ "date": "2026-10-09",
+ "day": 1,
+ "start": 100.0,
+ "end": 100.0,
+ "pct": 0.0,
+ "trades": 0,
+ "wins": 0,
+ "losses": 0,
+ "skipped": [
+  {
+   "time": "2026-10-09 03:00:00+00:00",
+   "sym": "BNBUSDT",
+   "side": "BUY",
+   "reason": "SL 765.66 not beyond entry"
+  }
+ ],
+ "events_in_day": 4,
+ "params": {
+  "lev": 20,
+  "margin_pct": 0.1,
+  "fee": 0.0005,
+  "slip": 0.0002,
+  "mmr": 0.005,
+  "line_mode": "body"
+ }
+}

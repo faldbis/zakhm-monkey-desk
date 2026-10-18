@@ -1,0 +1,33 @@
+{
+ "date": "2026-10-14",
+ "day": 6,
+ "start": 92.23,
+ "end": 92.14,
+ "pct": -0.1,
+ "trades": 1,
+ "wins": 0,
+ "losses": 1,
+ "skipped": [
+  {
+   "time": "2026-10-14 17:00:00+00:00",
+   "sym": "SOLUSDT",
+   "side": "BUY",
+   "reason": "SL 107.86 not beyond entry"
+  },
+  {
+   "time": "2026-10-14 17:00:00+00:00",
+   "sym": "SOLUSDT",
+   "side": "BUY",
+   "reason": "SL 107.86 not beyond entry"
+  }
+ ],
+ "events_in_day": 7,
+ "params": {
+  "lev": 20,
+  "margin_pct": 0.1,
+  "fee": 0.0005,
+  "slip": 0.0002,
+  "mmr": 0.005,
+  "line_mode": "body"
+ }
+}
