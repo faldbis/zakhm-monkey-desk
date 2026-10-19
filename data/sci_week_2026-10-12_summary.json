@@ -1,0 +1,16 @@
+{
+ "week": "2026-10-12",
+ "window_utc": [
+  "2026-10-12 00:00:00+00:00",
+  "2026-10-16 22:00:00+00:00"
+ ],
+ "start_kwd": 1000.0,
+ "end_kwd": 980.39,
+ "pct": -1.96,
+ "trades": 4,
+ "wins": 2,
+ "losses": 2,
+ "sum_R": -0.17,
+ "risk_pct": 6.5,
+ "source": "trades_sci_R_long_pref_atr10.csv (SCI-R preferred entry, H1 -> M15/M5, SL floor 1.0x ATR14, session 07-21 UTC, costs included)"
+}

@@ -15,9 +15,10 @@ canvas{height:100vh;max-width:100vw;aspect-ratio:9/16;background:#07090d}
 <div id="bar"><select id="daysel"></select></div>
 <script src="data/index.js"></script>
 <script>
-// ?day=data/day_2026-10-16.js  -> that replay;  ?day=replica -> original Day-8 reel replica;  default -> newest demo day
-(function(){const q=new URLSearchParams(location.search).get("day");const D=window.DAYS||[];
-  let f=q&&q!=="replica"?q:null; if(!q&&D.length){const demo=D.filter(x=>!/_road\.js$/.test(x.file)); f=(demo.length?demo:D).slice(-1)[0].file;}
+// default -> the entry flagged "default" in data/index.js (SCI-R week);  ?day=data/sci_week_2026-10-12.js / data/day_2026-10-16.js -> that replay;  ?day=replica -> original Day-8 reel replica;  default -> newest demo day
+(function(){let q=new URLSearchParams(location.search).get("day");const D=window.DAYS||[];
+  if(q==="sci"||q==="new") q=null;
+  let f=q&&q!=="replica"?q:null; if(!q&&D.length){const dft=D.find(x=>x.default); const demo=D.filter(x=>!/_road\.js$/.test(x.file)); f=dft?dft.file:(demo.length?demo:D).slice(-1)[0].file;}
   if(f&&/^data\/[\w.\-]+\.js$/.test(f)) document.write('<script src="'+f+'"><\/script>'); window.CUR_DAY=f||"replica";})();
 </script>
 <script>
@@ -75,10 +76,18 @@ const CONFIG = {
 /* ===================================================================== */
 // A backtest (run_day.py) writes day_configs/<date>.js -> window.DAY_CONFIG, merged here.
 if(window.DAY_CONFIG) Object.assign(CONFIG, window.DAY_CONFIG);
+const SPAN=CONFIG.span||1440, MULTI=SPAN>1440, CUR=CONFIG.cur||"$", PERIOD=CONFIG.periodWord||"today";
+const money=(v,sign=false)=>{const a=Math.abs(v).toFixed(2), sg=sign?(v>=0?"+":"-"):(v<0?"-":"");return CUR==="$"?`${sg}$${a}`:`${sg}${a} ${CUR}`;};
+const LV=t=>t.levTxt||`${t.lev}x`;
+const fmtU=u=>CONFIG.rMode?`${u>=0?"+":"-"}${Math.abs(u/100).toFixed(2)}R`:`${u>=0?"+":"-"}${Math.abs(u).toFixed(1)}%`;
+const WD=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+function clockTxt(m){const mm=Math.floor(m)%1440;const hm=`${String(Math.floor(mm/60)).padStart(2,"0")}:${String(mm%60).padStart(2,"0")}`;
+  if(!MULTI) return hm; const d=new Date(Date.parse(CONFIG.dateISO+"T00:00:00Z")+Math.floor(m/1440)*864e5);return `${WD[d.getUTCDay()]} ${d.getUTCDate()} ${hm}`;}
+function periodTxt(m){return MULTI?`DAY ${Math.min(Math.ceil(SPAN/1440),Math.floor(m/1440)+1)}/${Math.ceil(SPAN/1440)}`:`HOUR ${String(Math.min(24,Math.floor(m/60)+1)).padStart(2,"0")}/24`;}
 
 const W=1080,H=1920, FONT='"JetBrains Mono","IBM Plex Mono",monospace';
 const cv=document.getElementById('c'), ctx=cv.getContext('2d');
-const NAMES={BTC:"Bitcoin",ETH:"Ethereum",SOL:"Solana",XRP:"XRP",BNB:"BNB"};
+const NAMES={BTC:"Bitcoin",ETH:"Ethereum",SOL:"Solana",XRP:"XRP",BNB:"BNB",XAU:"Gold",EURUSD:"EUR/USD",GBPUSD:"GBP/USD",GBPJPY:"GBP/JPY",GBPAUD:"GBP/AUD",USDCAD:"USD/CAD",USDJPY:"USD/JPY",AUDUSD:"AUD/USD",EURAUD:"EUR/AUD"};
 const COL={bg:"#07090d",panel:"#0b0f14",stroke:"#222a33",text:"#d6dbe1",dim:"#7c858f",dim2:"#565e68",
   yellow:"#f1c84f",green:"#4fe39a",up:"#29b47c",down:"#e0525c",red:"#ef5b62",cyan:"#22c3e6"};
 const AG=[ // agent cards / robots
@@ -120,8 +129,8 @@ const STEP=(1415-25)/Math.max(1,N);
 TR.forEach((t,i)=>{if(t.o===undefined){t.o=25+i*STEP; t.c=t.o+STEP*0.72;}});
 // replay clock: t(seconds) -> minute of day. piecewise like the original
 const TL=CONFIG.timeline||[[0,CONFIG.startMinute],[.147,297],[.368,685],[.588,932],[.809,1158],[.882,1186],[1,1440]];
-function minuteAt(t){const f=t/CONFIG.replayEnd; if(f>=1) return 1440; if(f<=0) return TL[0][1];
-  for(let i=1;i<TL.length;i++) if(f<=TL[i][0]){const s=(f-TL[i-1][0])/(TL[i][0]-TL[i-1][0]);return lerp(TL[i-1][1],TL[i][1],s);} return 1440;}
+function minuteAt(t){const f=t/CONFIG.replayEnd; if(f>=1) return SPAN; if(f<=0) return TL[0][1];
+  for(let i=1;i<TL.length;i++) if(f<=TL[i][0]){const s=(f-TL[i-1][0])/(TL[i][0]-TL[i-1][0]);return lerp(TL[i-1][1],TL[i][1],s);} return SPAN;}
 function timeAtMinute(m){for(let i=1;i<TL.length;i++) if(m<=TL[i][1]){const s=(m-TL[i-1][1])/(TL[i][1]-TL[i-1][1]);return Math.max(-1,lerp(TL[i-1][0],TL[i][0],s))*CONFIG.replayEnd;} return CONFIG.replayEnd;}
 TR.forEach(t=>{t.to=timeAtMinute(t.o); t.tc=timeAtMinute(t.c); if(t.o<CONFIG.startMinute){t.to=-3+t.n*0.1; t.tc=Math.min(t.tc,0.25);} });
 let acc=CONFIG.startBalance; TR.forEach(t=>{t.balBefore=acc; acc+=t.pnl; t.balAfter=acc;});
@@ -154,7 +163,7 @@ function candle(sym,k,mNow){ const r=RC[sym];
     if(o===null){const p=price(sym,a);return {o:p,h:p,l:p,c:p};} return {o,h,l,c};} // 15m candle k, truncated at mNow
   const a=k*15, b=Math.min(k*15+15,mNow); let o=price(sym,a),c=price(sym,b),h=Math.max(o,c),l=Math.min(o,c);
   for(let m=a;m<=b;m++){const p=price(sym,m);h=Math.max(h,p);l=Math.min(l,p);} return {o,h,l,c};}
-function fmtP(sym,p){ if(sym==="ETH"||sym==="BTC") return Math.round(p).toLocaleString("en-US"); return p.toFixed(4);}
+function fmtP(sym,p){ if(sym==="ETH"||sym==="BTC") return Math.round(p).toLocaleString("en-US"); if(sym==="XAU") return p.toFixed(2); if(/JPY/.test(sym)) return p.toFixed(3); if(sym.length===6) return p.toFixed(5); return p.toFixed(4);}
 const fmt2=v=>v.toFixed(2);
 const sgn=v=>(v>=0?"+":"-");
 
@@ -203,15 +212,15 @@ function drawHeader(S){
   rr(191.5,15.5,53,21,3);ctx.fillStyle="#08262e";ctx.fill();ctx.strokeStyle="#1b9cbc";ctx.lineWidth=1.2;ctx.stroke();
   txt("REPLAY",218,30,11,"#5fd3ee",500,"center");
   rr(253.5,11.5,313,29,3);ctx.fillStyle="#2a230c";ctx.fill();ctx.strokeStyle="#d6b14a";ctx.lineWidth=1.4;ctx.stroke();
-  txt("PORTFOLIO · BTC ETH SOL XRP BNB",410,32,16,"#f1cf5c",700,"center");
-  const f=clamp(S.m/1440,0,1);
+  txt(CONFIG.portfolioLabel||"PORTFOLIO · BTC ETH SOL XRP BNB",410,32,CONFIG.portfolioLabel&&CONFIG.portfolioLabel.length>30?12.5:16,"#f1cf5c",700,"center");
+  const f=clamp(S.m/SPAN,0,1);
   rr(707,17,150,5,2.5);ctx.fillStyle="#222a33";ctx.fill();rr(707,17,150*f,5,2.5);ctx.fillStyle=COL.cyan;ctx.fill();
   ctx.fillStyle="#3a434d";for(let i=0;i<=4;i++)ctx.fillRect(707+i*37.5,25,1,3);
-  const hr=Math.min(24,Math.floor(S.m/60)+1), mm=Math.floor(S.m)%1440;
+  const mm=Math.floor(S.m)%1440;
   rr(869.5,10.5,93,21,2);ctx.fillStyle="#06232b";ctx.fill();ctx.strokeStyle="#1b9cbc";ctx.stroke();
-  txt(`HOUR ${String(hr).padStart(2,"0")}/24`,916,26,12,"#5fd3ee",700,"center");
-  txt(`${String(Math.floor(mm/60)).padStart(2,"0")}:${String(mm%60).padStart(2,"0")} UTC`,1058,27,17,"#e6e9ee",500,"right");
-  const night=(S.m<360||S.m>=1260)?"night · ":"";
+  txt(periodTxt(S.m),916,26,12,"#5fd3ee",700,"center");
+  txt(`${MULTI?clockTxt(S.m).slice(-5):clockTxt(S.m)} UTC`,1058,27,17,"#e6e9ee",500,"right");
+  const night=(mm<360||mm>=1260)?"night · ":"";
   txt(`${night}${CONFIG.dateLabel}  ·  ${S.done?"■ END":"▶ REPLAY"}`,1058,44,10.5,COL.dim,400,"right");
   ctx.fillStyle="#161c23";ctx.fillRect(0,51,W,1);
 }
@@ -221,16 +230,16 @@ function recentEvent(S){const ev=(CONFIG.events||[]).filter(e=>e[0]<=S.m); const
   return e[2]==="armed"?`${e[1]} ${e[3]} ${e[4]==="buy"?"SELL":"BUY"} setup armed`:`${e[1]} ${e[3]} ${e[4]} zone ${fmtP(e[1],e[5])}`;}
 function agentStatus(id,S){
   const t=S.t, o=S.open, L=S.last;
-  if(S.done){const fin={SCOUT:"scanning the replay",CHECK:`day ${sgn(END-CONFIG.startBalance)}${((END/CONFIG.startBalance-1)*100).toFixed(1)} %`,SIZE:`end ${fmt2(END)} $`,
-    ENTRY:"replay finished",EXIT:`${N} trade${N===1?"":"s"} done`,GUARD:N?"hindsight only!":"no setup = no trade",CHIEF:"day done!"};return [fin[id],CONFIG.replayEnd];}
+  if(S.done){const fin={SCOUT:"scanning the replay",CHECK:`${MULTI?"week":"day"} ${sgn(END-CONFIG.startBalance)}${Math.abs((END/CONFIG.startBalance-1)*100).toFixed(1)} %`,SIZE:`end ${money(END)}`,
+    ENTRY:"replay finished",EXIT:`${N} trade${N===1?"":"s"} done`,GUARD:N?"hindsight only!":"no setup = no trade",CHIEF:MULTI?"week done!":"day done!"};return [fin[id],CONFIG.replayEnd];}
   const sym=o?o.sym:(L?L.sym:"ETH");
   const lists={
-    SCOUT:CONFIG.strategyName?[recentEvent(S)||"scanning OSMA zones"]:["scanning the replay"],
-    CHECK:CONFIG.strategyName?["OSMA 132/32/16","waiting 1H close","\u201Creal candle, ok\u201D"]:["reviewing the logs","reading 15m candles","\u201Creal candle, ok\u201D"],
-    SIZE:[o?`margin ${fmt2(o.margin)} $`:`balance ${fmt2(S.realized)}`,`balance ${fmt2(S.realized)}`,`\u201C${o?o.lev:CONFIG.leverage}x · ${sym}\u201D`],
-    ENTRY:o?[`on ${o.sym} ${o.side} ${o.lev}x ${sgn(S.upct)}${Math.abs(S.upct).toFixed(1)}%`,"\u201Cyour position now\u201D"]:["ready to enter","\u201Cyour position now\u201D"],
+    SCOUT:CONFIG.strategyName?[recentEvent(S)||CONFIG.scoutIdle||"scanning OSMA zones"]:["scanning the replay"],
+    CHECK:CONFIG.checkList?CONFIG.checkList:CONFIG.strategyName?["OSMA 132/32/16","waiting 1H close","\u201Creal candle, ok\u201D"]:["reviewing the logs","reading 15m candles","\u201Creal candle, ok\u201D"],
+    SIZE:CONFIG.rMode?[o?`risk ${money(o.margin)}`:`balance ${money(S.realized)}`,`balance ${money(S.realized)}`,`\u201C${CONFIG.riskPct}% risk · ${sym}\u201D`]:[o?`margin ${fmt2(o.margin)} $`:`balance ${fmt2(S.realized)}`,`balance ${fmt2(S.realized)}`,`\u201C${o?o.lev:CONFIG.leverage}x · ${sym}\u201D`],
+    ENTRY:o?[`on ${o.sym} ${o.side} ${LV(o)} ${fmtU(S.upct)}`,"\u201Cyour position now\u201D"]:["ready to enter","\u201Cyour position now\u201D"],
     EXIT:o?[`holding ${o.sym} ${o.side.toLowerCase()}`,...(o.tp?[`TP ${fmtP(o.sym,o.tp)}`]:[])]:["waiting for exit","holding cash"],
-    GUARD:o&&o.sl?[`SL ${fmtP(o.sym,o.sl)} (opp. zone)`,"watching risk"]:o?[`liq. at ${fmtP(o.sym,o.entry*(1+(o.side==="LONG"?-1:1)*0.9/o.lev))}`,"watching risk","logging the trades"]:["watching risk","logging the trades"],
+    GUARD:o&&o.sl?[`SL ${fmtP(o.sym,o.sl)} (${CONFIG.slNote||"opp. zone"})`,"watching risk"]:o?[`liq. at ${fmtP(o.sym,o.entry*(1+(o.side==="LONG"?-1:1)*0.9/o.lev))}`,"watching risk","logging the trades"]:["watching risk","logging the trades"],
     CHIEF:["watching the replay","doing my rounds"]};
   const ph={SCOUT:0,CHECK:.7,SIZE:1.4,ENTRY:2.1,EXIT:.35,GUARD:1.75,CHIEF:2.6}[id], P=3.4;
   const k=Math.floor((t+ph)/P), arr=lists[id];
@@ -262,24 +271,25 @@ function drawBalance(S){
   ctx.save();ctx.translate(540,370);ctx.scale(bump,bump);
   ctx.shadowColor="rgba(150,235,130,0.55)";ctx.shadowBlur=34;
   ctx.font=`800 152px "Saira SemiCondensed","Saira Semi Condensed",${FONT}`;ctx.fillStyle="#f2c94e";ctx.textAlign="center";ctx.textBaseline="alphabetic";
-  ctx.fillText(`$ ${fmt2(S.bal)}`,0,45);ctx.shadowBlur=0;ctx.fillText(`$ ${fmt2(S.bal)}`,0,45);
+  const bigS=CUR==="$"?`$ ${fmt2(S.bal)}`:`${fmt2(S.bal)} ${CUR}`; if(CUR!=="$") ctx.font=`800 128px "Saira SemiCondensed","Saira Semi Condensed",${FONT}`;
+  ctx.fillText(bigS,0,45);ctx.shadowBlur=0;ctx.fillText(bigS,0,45);
   ctx.restore();
   const pct=(S.bal/CONFIG.startBalance-1)*100;
   ctx.save();ctx.shadowColor="rgba(80,230,150,0.45)";ctx.shadowBlur=14;
-  txt(`${sgn(pct)}${Math.abs(pct).toFixed(2)} % today`,540,484,40,COL.green,700,"center");ctx.restore();
+  txt(`${sgn(pct)}${Math.abs(pct).toFixed(2)} % ${PERIOD}`,540,484,40,pct>=0?COL.green:COL.red,700,"center");ctx.restore();
   // popping +$ texts
   const R=rng(1234);
   TR.forEach((x,i)=>{const r1=R(),r2=R(); const dt=t-x.tc; if(dt<0||dt>2.2||S.done&&dt>0.6) return;
     const a=dt<0.15?dt/0.15:1-clamp((dt-1.3)/0.9,0,1); const sx=300+r1*420, sy=600-ease(dt/1.4)*60+r2*20;
     ctx.save();ctx.globalAlpha=a;ctx.shadowColor="rgba(80,230,150,.5)";ctx.shadowBlur=12;
-    txt(`${x.pnl>=0?"+":"-"}$${Math.abs(x.pnl).toFixed(2)}`,sx,sy,38,x.pnl>=0?COL.green:COL.red,700,"center");ctx.restore();
+    txt(money(x.pnl,true),sx,sy,38,x.pnl>=0?COL.green:COL.red,700,"center");ctx.restore();
     // coins
     if(x.pnl>0) for(let k=0;k<7;k++){const ang=-Math.PI/2+(R()-.5)*2.2, sp=260+R()*260, cx=540+Math.cos(ang)*sp*dt, cy=380+Math.sin(ang)*sp*dt+600*dt*dt;
       if(dt<1.1){ctx.globalAlpha=1-dt/1.1; coin(cx,cy,11,t*8+k);ctx.globalAlpha=1;}}
   });
   if(S.done){const s=ease((t-CONFIG.replayEnd)/0.45);ctx.save();ctx.globalAlpha=s;ctx.translate(540,548);ctx.scale(0.85+0.15*s,0.85+0.15*s);
     rr(-420,-42,840,86,9);ctx.fillStyle="#0d1015";ctx.fill();ctx.strokeStyle="#e8c34a";ctx.lineWidth=2.4;ctx.stroke();
-    txt(`$${fmt2(CONFIG.startBalance)}   →   $${fmt2(END)}`,0,16,44,"#f2d47c",700,"center");ctx.restore();}
+    txt(`${money(CONFIG.startBalance)}   →   ${money(END)}`,0,16,CUR==="$"?44:38,"#f2d47c",700,"center");ctx.restore();}
 }
 function coin(x,y,r,rot){const sx=Math.abs(Math.cos(rot));ctx.save();ctx.translate(x,y);ctx.scale(Math.max(.15,sx),1);
   ctx.fillStyle="#f2c94e";ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.fillStyle="#b8891c";ctx.fillRect(-r*.2,-r*.55,r*.4,r*1.1);ctx.restore();}
@@ -358,8 +368,8 @@ function drawOffice(S){
   const t=S.t;
   panel(0,620,W,630,"#1b4655","#0a0d13");
   ctx.save();rr(1,621,W-2,628,4);ctx.clip();
-  txt(`${CONFIG.strategyName?CONFIG.strategyName+" · ":""}BOT OFFICE · ${CONFIG.dateLabel} · hindsight replay`,14,641,11,CONFIG.strategyName?"#f1c84f":COL.dim,CONFIG.strategyName?700:400);
-  txt(`Binance ${CONFIG.candles?"":"USD-M "}${S.chartSym}/USDT 15m · ${CONFIG.dateISO} UTC · real candles`,1066,641,11,COL.dim,400,"right");
+  txt(`${CONFIG.strategyName?(CONFIG.strategyLong||CONFIG.strategyName)+" · ":""}BOT OFFICE · ${CONFIG.dateLabel} · hindsight replay`,14,641,11,CONFIG.strategyName?"#f1c84f":COL.dim,CONFIG.strategyName?700:400);
+  txt(CONFIG.feedLabel?`${S.chartSym} 15m · ${CONFIG.feedLabel}`:`Binance ${CONFIG.candles?"":"USD-M "}${S.chartSym}/USDT 15m · ${CONFIG.dateISO} UTC · real candles`,1066,641,11,COL.dim,400,"right");
   const WX=570,WY=400,WH=92;
   // floor
   poly([P(0,0),P(WX,0),P(WX,WY),P(0,WY)],"#10141c","#1d2a35");
@@ -393,11 +403,11 @@ function drawOffice(S){
   {const [x,y]=patrol(BOT.CHIEF.pts,t,30,2.5,1);items.push({k:x+y+30,f:()=>{const [sx,sy]=P(x,y);anchors.CHIEF=chief(sx,sy,t);}});}
   items.sort((a,b)=>a.k-b.k).forEach(it=>it.f());
   // position tag above ENTRY robot
-  if(S.open&&anchors.ENTRY){const [ax,ay]=anchors.ENTRY;txt(`${S.open.sym} ${S.open.side} ${S.open.lev}x`,ax+26,ay+30,9.5,"#d6dbe1",700);
-    txt(`${sgn(S.upct)}${Math.abs(S.upct).toFixed(1)}%`,ax+26,ay+42,9.5,S.upct>=0?COL.green:COL.red,700);}
+  if(S.open&&anchors.ENTRY){const [ax,ay]=anchors.ENTRY;txt(`${S.open.sym} ${S.open.side} ${LV(S.open)}`,ax+26,ay+30,9.5,"#d6dbe1",700);
+    txt(fmtU(S.upct),ax+26,ay+42,9.5,S.upct>=0?COL.green:COL.red,700);}
   // office pop "+x $"
   const lc=S.last; if(lc&&anchors.ENTRY&&t-lc.tc<3&&t-lc.tc>=0){const [ax,ay]=anchors.ENTRY;const a=clamp((3-(t-lc.tc))/0.4,0,1);ctx.save();ctx.globalAlpha=a;
-    const s=`${lc.pnl>=0?"+":"-"}${Math.abs(lc.pnl).toFixed(2)} $`;const w=tw(s,22,700)+22;rr(ax+20,ay-24,w,34,3);ctx.fillStyle="rgba(10,30,22,.85)";ctx.fill();ctx.strokeStyle=lc.pnl>=0?"#3ddc84":"#e0525c";ctx.lineWidth=1.5;ctx.stroke();
+    const s=CUR==="$"?`${lc.pnl>=0?"+":"-"}${Math.abs(lc.pnl).toFixed(2)} $`:money(lc.pnl,true);const w=tw(s,22,700)+22;rr(ax+20,ay-24,w,34,3);ctx.fillStyle="rgba(10,30,22,.85)";ctx.fill();ctx.strokeStyle=lc.pnl>=0?"#3ddc84":"#e0525c";ctx.lineWidth=1.5;ctx.stroke();
     txt(s,ax+31,ay,22,lc.pnl>=0?COL.green:COL.red,700);ctx.restore();}
   // bubbles on top
   [...AG.map(a=>[a.id,a.c]),["CHIEF","#e8ebef"]].forEach(([id,c])=>{const an=anchors[id];if(!an)return;const [s,since]=agentStatus(id,S);
@@ -423,14 +433,13 @@ function drawWallScreen(S){
   const x0=150,x1=480,z0=5,z1=120;
   poly([P(x0,0,z1),P(x1,0,z1),P(x1,0,z0),P(x0,0,z0)],"rgba(6,18,26,.93)","#2bb7d8",1.6);
   const [ox,oy]=P(x0,0,z1); ctx.save();ctx.setTransform(K,0.5*K,0,K,ox,oy); // local: u along wall, v down
-  txt(`${S.chartSym}/USD 15m · real`,14,24,14,"#cdd3da",500);
+  txt(`${S.chartSym}${S.chartSym.length===6?"":"/USD"} 15m · real`,14,24,14,"#cdd3da",500);
   const k1=Math.floor(S.m/15), n=48, ps=[];for(let k=k1-n+1;k<=k1;k++) if(k*15>=(RC[S.chartSym]?RC[S.chartSym].t0:0)) ps.push(candle(S.chartSym,k,S.m));
   let lo=Math.min(...ps.map(c=>c.l)),hi=Math.max(...ps.map(c=>c.h));if(hi-lo<1e-9)hi=lo+1;
   ps.forEach((c,i)=>{const X=14+i*6.2, y=v=>40+(1-(v-lo)/(hi-lo))*46;ctx.fillStyle=c.c>=c.o?COL.up:COL.down;ctx.fillRect(X+1.5,y(c.h),1,y(c.l)-y(c.h)+1);ctx.fillRect(X,Math.min(y(c.o),y(c.c)),4,Math.max(1.5,Math.abs(y(c.o)-y(c.c))));});
   const cp=price(S.chartSym,S.m), up=ps.length>1&&cp>=ps[0].o;
   txt(fmtP(S.chartSym,cp),300,72,16,up?COL.green:COL.red,700,"right");
-  const hr=Math.min(24,Math.floor(S.m/60)+1), mm=Math.floor(S.m)%1440;
-  txt(`HOUR ${hr}/24 · ${String(Math.floor(mm/60)).padStart(2,"0")}:${String(mm%60).padStart(2,"0")} UTC`,14,104,14,"#3fd0f0",700);
+  txt(`${periodTxt(S.m)} · ${clockTxt(S.m)} UTC`,14,104,14,"#3fd0f0",700);
   ctx.restore();
 }
 
@@ -439,10 +448,10 @@ function drawChart(S){
   panel(0,1262,528,370);
   const sym=S.chartSym, m=S.m;
   txt(`CHART · ${sym} (${NAMES[sym]}) 15m`,15,1290,15,"#8f98a2",400);
-  const k1=Math.floor(Math.min(m,1439.9)/15), n=22, cs=[];for(let k=k1-n+1;k<=k1;k++) if(k*15>=(RC[sym]?RC[sym].t0:0)) cs.push([k,candle(sym,k,m)]);
+  const k1=Math.floor(Math.min(m,SPAN-0.1)/15), n=22, cs=[];for(let k=k1-n+1;k<=k1;k++) if(k*15>=(RC[sym]?RC[sym].t0:0)) cs.push([k,candle(sym,k,m)]);
   let lo=Math.min(...cs.map(c=>c[1].l)),hi=Math.max(...cs.map(c=>c[1].h)); const pad=(hi-lo)*0.18+1e-9; lo-=pad;hi+=pad;
   const Y=v=>1325+(1-(v-lo)/(hi-lo))*275, X0=440-n*20;
-  const cp=price(sym,Math.min(m,1441)); const up=cs.length&&cp>=cs[0][1].o;
+  const cp=price(sym,Math.min(m,SPAN+1)); const up=cs.length&&cp>=cs[0][1].o;
   txt(fmtP(sym,cp),515,1290,17,up?COL.green:COL.red,700,"right");
   for(let i=0;i<5;i++){const v=lerp(hi,lo,(i+.5)/5);txt(fmtP(sym,v),455,Y(v)+5,14,"#8f98a2",400);}
   ctx.save();rr(1,1300,527,330,4);ctx.clip();
@@ -450,10 +459,10 @@ function drawChart(S){
     ctx.fillRect(x+5.5,Y(c.h),1.5,Y(c.l)-Y(c.h)+1);ctx.fillRect(x,Math.min(Y(c.o),Y(c.c)),12,Math.max(2,Math.abs(Y(c.o)-Y(c.c))));});
   const kmin=cs.length?cs[0][0]:0; const xk=mm=>X0+(Math.floor(mm/15)-kmin+(n-cs.length))*20+6;
   TR.filter(t=>t.sym===sym&&t.o<=m&&t.o>=kmin*15-1).forEach(t=>{const x=xk(t.o),y=Y(t.entry),L=t.side==="LONG",c=L?COL.up:COL.down;
-    ctx.fillStyle=c;ctx.beginPath();if(L){const yy=Y(candle(sym,Math.floor(t.o/15),m).l)+8;ctx.moveTo(x,yy);ctx.lineTo(x-6,yy+10);ctx.lineTo(x+6,yy+10);txt(`${t.side} ${t.lev}x ${fmtP(sym,t.entry)}`,x-60,yy+28,14,c,500);}
-    else{const yy=Y(candle(sym,Math.floor(t.o/15),m).h)-8;ctx.moveTo(x,yy);ctx.lineTo(x-6,yy-10);ctx.lineTo(x+6,yy-10);txt(`${t.side} ${t.lev}x ${fmtP(sym,t.entry)}`,x-70,yy-16,14,c,500);}ctx.fill();});
+    ctx.fillStyle=c;ctx.beginPath();if(L){const yy=Y(candle(sym,Math.floor(t.o/15),m).l)+8;ctx.moveTo(x,yy);ctx.lineTo(x-6,yy+10);ctx.lineTo(x+6,yy+10);txt(`${t.side} ${LV(t)} ${fmtP(sym,t.entry)}`,x-60,yy+28,14,c,500);}
+    else{const yy=Y(candle(sym,Math.floor(t.o/15),m).h)-8;ctx.moveTo(x,yy);ctx.lineTo(x-6,yy-10);ctx.lineTo(x+6,yy-10);txt(`${t.side} ${LV(t)} ${fmtP(sym,t.entry)}`,x-70,yy-16,14,c,500);}ctx.fill();});
   TR.filter(t=>t.sym===sym&&t.c<=m&&t.c>=kmin*15-1).forEach(t=>{const x=xk(t.c),y=Y(t.exit);ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill();
-    txt(`exit ${fmtP(sym,t.exit)} ${t.pnl>=0?"+":"-"}${Math.round(Math.abs(t.pnl))}$`,x-60,t.side==="LONG"?y-14:y+24,14,t.pnl>=0?COL.up:COL.down,500);});
+    txt(`exit ${fmtP(sym,t.exit)} ${CONFIG.rMode?fmtU(t.R*100):(t.pnl>=0?"+":"-")+Math.round(Math.abs(t.pnl))+"$"}`,x-60,t.side==="LONG"?y-14:y+24,14,t.pnl>=0?COL.up:COL.down,500);});
   ctx.restore();
 }
 
@@ -462,27 +471,27 @@ function drawPositions(S){
   panel(540,1260,540,202);
   txt("OPEN POSITIONS",553,1285,12,"#f1c84f",700);
   const eq=S.realized+S.upnl, open=S.open, done=S.closed.length;
-  txt(`${fmt2(eq)} $`,1066,1292,26,"#e6e9ee",500,"right");
+  txt(CUR==="$"?`${fmt2(eq)} $`:money(eq),1066,1292,26,"#e6e9ee",500,"right");
   const dp=eq-CONFIG.startBalance;
-  txt(`${sgn(dp)}${Math.abs(dp).toFixed(2)} $    ${sgn(dp)}${Math.abs(dp/CONFIG.startBalance*100).toFixed(2)} % today`,1066,1314,11.5,COL.green,400,"right");
+  txt(`${sgn(dp)}${Math.abs(dp).toFixed(2)} ${CUR}    ${sgn(dp)}${Math.abs(dp/CONFIG.startBalance*100).toFixed(2)} % ${PERIOD}`,1066,1314,11.5,dp>=0?COL.green:COL.red,400,"right");
   const mg=S.opens.reduce((a,x)=>a+x.margin,0);
-  txt(`${S.opens.length} open · margin ${fmt2(mg)} $`,553,1310,11,COL.dim,400);
-  txt(`cash ${fmt2(S.realized-mg)} $`,553,1326,11,COL.dim,400);
+  txt(CONFIG.rMode?`${S.opens.length} open · at risk ${fmt2(mg)} ${CUR} (${CONFIG.riskPct}%)`:`${S.opens.length} open · margin ${fmt2(mg)} $`,553,1310,11,COL.dim,400);
+  txt(CONFIG.rMode?`balance ${fmt2(S.realized)} ${CUR}`:`cash ${fmt2(S.realized-mg)} $`,553,1326,11,COL.dim,400);
   if(open){const g=S.upnl>=0,c=g?"#3ddc84":"#e0525c";rr(548.5,1332.5,523,17,2);ctx.fillStyle=hexA(c,.10);ctx.fill();ctx.strokeStyle=hexA(c,.7);ctx.lineWidth=1;ctx.stroke();
-    txt(`${open.sym} ${open.side} ${open.lev}x ${fmtP(open.sym,open.entry)} > ${fmtP(open.sym,S.cur)}`,553,1345,10.5,"#d6dbe1",400);
-    txt(`${sgn(S.upnl)}${Math.abs(S.upnl).toFixed(2)} $ (${sgn(S.upct)}${Math.abs(S.upct).toFixed(1)}%)`,1066,1345,10.5,g?COL.green:COL.red,400,"right");}
+    txt(`${open.sym} ${open.side} ${LV(open)} ${fmtP(open.sym,open.entry)} > ${fmtP(open.sym,S.cur)}`,553,1345,10.5,"#d6dbe1",400);
+    txt(`${sgn(S.upnl)}${Math.abs(S.upnl).toFixed(2)} ${CUR} (${fmtU(S.upct)})`,1066,1345,10.5,g?COL.green:COL.red,400,"right");}
   else txt("no open positions · all cash",810,1385,13,"#59616b",400,"center");
-  txt(`${done}/${N} trades closed · fees+slip ${(S.closed.length&&S.closed[0].fees!==undefined?S.closed.reduce((a,x)=>a+x.fees,0):CONFIG.feesTotal*done/Math.max(1,N)).toFixed(2)} $`,553,1452,11,COL.dim,400);
+  txt(`${done}/${N} trades closed · ${CONFIG.rMode?"spread+comm":"fees+slip"} ${(S.closed.length&&S.closed[0].fees!==undefined?S.closed.reduce((a,x)=>a+x.fees,0):CONFIG.feesTotal*done/Math.max(1,N)).toFixed(2)} ${CUR}`,553,1452,11,COL.dim,400);
 }
 function drawPortfolio(S){
   panel(540,1475,540,215);
-  txt("PORTFOLIO BALANCE (USD)",553,1500,12,"#8f98a2",400);
-  const _bs=[CONFIG.startBalance,...TR.map(x=>x.balAfter)], _mn=Math.min(..._bs), _mx=Math.max(..._bs), _pd=Math.max(0.5,(_mx-_mn)*0.04), lo=_mn-_pd, hi=_mx+_pd, X=m=>553+m/1440*462, Y=v=>1665-(v-lo)/(hi-lo)*130;
+  txt(`PORTFOLIO BALANCE (${CUR==="$"?"USD":CUR})${CONFIG.rMode?` · ${CONFIG.riskPct}% risk/trade`:""}`,553,1500,12,"#8f98a2",400);
+  const _bs=[CONFIG.startBalance,...TR.map(x=>x.balAfter)], _mn=Math.min(..._bs), _mx=Math.max(..._bs), _pd=Math.max(0.5,(_mx-_mn)*0.04), lo=_mn-_pd, hi=_mx+_pd, X=m=>553+m/SPAN*462, Y=v=>1665-(v-lo)/(hi-lo)*130;
   ctx.setLineDash([2,4]);ctx.strokeStyle="#2a323c";ctx.lineWidth=1;
-  [360,720,1080].forEach((m,i)=>{ctx.beginPath();ctx.moveTo(X(m),1520);ctx.lineTo(X(m),1668);ctx.stroke();txt(["06h","12h","18h"][i],X(m)+6,1682,10.5,"#59616b",400);});
+  (MULTI?Array.from({length:Math.ceil(SPAN/1440)-1},(_,i)=>(i+1)*1440):[360,720,1080]).forEach((m,i)=>{ctx.beginPath();ctx.moveTo(X(m),1520);ctx.lineTo(X(m),1668);ctx.stroke();txt(MULTI?clockTxt(m).split(" ")[0]:["06h","12h","18h"][i],X(m)+6,1682,10.5,"#59616b",400);});
   ctx.strokeStyle="#3a434d";ctx.beginPath();ctx.moveTo(553,Y(CONFIG.startBalance));ctx.lineTo(1015,Y(CONFIG.startBalance));ctx.stroke();ctx.setLineDash([]);
   for(let i=0;i<4;i++){const v=lerp(lo,hi,i/3);txt(fmt2(v),1068,Y(v)+4,10.5,"#59616b",400,"right");}
-  const pts=[[0,CONFIG.startBalance]];S.closed.forEach(t=>pts.push([t.c,t.balAfter]));pts.push([Math.min(S.m,1440),S.realized+S.upnl]);
+  const pts=[[0,CONFIG.startBalance]];S.closed.forEach(t=>pts.push([t.c,t.balAfter]));pts.push([Math.min(S.m,SPAN),S.realized+S.upnl]);
   const g=ctx.createLinearGradient(0,1520,0,1668);g.addColorStop(0,"rgba(61,220,132,.28)");g.addColorStop(1,"rgba(61,220,132,0.03)");
   ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1])));ctx.lineTo(X(pts[pts.length-1][0]),1668);ctx.lineTo(X(0),1668);ctx.closePath();ctx.fillStyle=g;ctx.fill();
   ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1])));ctx.strokeStyle="#3ddc84";ctx.lineWidth=2;ctx.stroke();
@@ -495,25 +504,25 @@ function drawLog(S){
   rr(1,1700.5,1078,190,6);ctx.fillStyle="#0b0d10";ctx.fill();ctx.strokeStyle="#d9b647";ctx.lineWidth=1.6;ctx.stroke();
   txt(`TRADE LOG · ${CONFIG.dateLabel}`,20,1736,22,"#f1c84f",700);
   const dp=(S.bal/CONFIG.startBalance-1)*100;
-  txt(`day ${sgn(dp)}${Math.abs(dp).toFixed(1)} %`,1060,1736,22,dp>=0?COL.green:COL.red,700,"right");
+  txt(`${MULTI?"week":"day"} ${sgn(dp)}${Math.abs(dp).toFixed(1)} %`,1060,1736,22,dp>=0?COL.green:COL.red,700,"right");
   const rows=[]; S.closed.forEach(t=>rows.push({t,st:"closed"})); if(S.open) rows.push({t:S.open,st:"open"});
   let show=rows.slice(-5); let pn=rows.length+1; while(show.length<5) show.push({st:"pending",n:pn++});
   show.forEach((r,i)=>{const y=1772+i*27;
-    if(r.st==="pending"){txt(`#${String(r.n).padStart(2," ")} · ${N===0&&CONFIG.strategyName?"waiting for zakhm setup":"pending"}`,20,y,18,"#4a515a",400);return;}
+    if(r.st==="pending"){txt(`#${String(r.n).padStart(2," ")} · ${N===0&&CONFIG.strategyName?(CONFIG.pendingText||"waiting for zakhm setup"):"pending"}`,20,y,18,"#4a515a",400);return;}
     const t=r.t, loss=r.st==="closed"&&t.pnl<0;
     if(loss){ctx.fillStyle="rgba(224,82,92,.18)";ctx.fillRect(8,y-19,1064,25);}
     if(r.st==="open"){rr(8.5,y-18.5,1063,24,3);ctx.fillStyle="rgba(61,220,132,.07)";ctx.fill();ctx.strokeStyle="rgba(61,220,132,.6)";ctx.lineWidth=1;ctx.stroke();}
     const base=loss?"#f07a80":"#d6dbe1"; let x=20;
     const seg=(s,c,w=400,sz=18)=>{txt(s,x,y,sz,c,w);x+=tw(s,sz,w);};
     seg(`#${String(t.n).padStart(2," ")} `,base);seg(`${t.sym} (${NAMES[t.sym]}) `,base);
-    seg(`${t.side} ${t.lev}x `,t.side==="LONG"?COL.up:COL.red,500);
+    seg(`${t.side} ${LV(t)} `,t.side==="LONG"?COL.up:COL.red,500);
     if(r.st==="open"){seg(`${fmtP(t.sym,t.entry)}->…`,"#aab2bb",400,16);
-      txt(`${sgn(S.upct)}${Math.abs(S.upct).toFixed(1)}% ${sgn(S.upnl)}${Math.abs(S.upnl).toFixed(2)}$ open`,1060,y,18,S.upnl>=0?COL.green:COL.red,500,"right");}
+      txt(`${fmtU(S.upct)} ${sgn(S.upnl)}${Math.abs(S.upnl).toFixed(2)}${CUR==="$"?"$":" "+CUR} open`,1060,y,18,S.upnl>=0?COL.green:COL.red,500,"right");}
     else{seg(`${fmtP(t.sym,t.entry)}->${fmtP(t.sym,t.exit)}`,loss?"#f07a80":"#aab2bb",400,16);
-      txt(`${sgn(t.pct)}${Math.abs(t.pct).toFixed(1)}% ${sgn(t.pnl)}${Math.abs(t.pnl).toFixed(2)}$`,1060,y,18,t.pnl>=0?COL.green:COL.red,500,"right");}
+      txt(`${CONFIG.rMode?fmtU(t.R*100):sgn(t.pct)+Math.abs(t.pct).toFixed(1)+"%"} ${sgn(t.pnl)}${Math.abs(t.pnl).toFixed(2)}${CUR==="$"?"$":" "+CUR}`,1060,y,18,t.pnl>=0?COL.green:COL.red,500,"right");}
   });
   ctx.fillStyle="#1c1712";ctx.fillRect(0,1892,W,28);ctx.fillStyle="#3a3222";ctx.fillRect(0,1892,W,1);
-  txt("Not financial advice",540,1911,15,"#dfe3e8",400,"center");
+  txt(CONFIG.rMode?"Hindsight replay of backtest trades · not live results · not financial advice":"Not financial advice",540,1911,15,"#dfe3e8",400,"center");
 }
 
 // ---------- frame ----------
@@ -603,6 +612,7 @@ document.fonts.load(`800 40px "JetBrains Mono"`).then(()=>document.fonts.load(`4
   window.READY=true;
   if(Q.has("render")){document.getElementById("start").remove();render(0);return;}
   if(Q.has("t")){document.getElementById("start").remove();render(+Q.get("t"));return;}
+  if(CONFIG.startText){const sd=document.querySelector("#start div div"); if(sd) sd.textContent=CONFIG.startText;}
   render(0);
   const sel=document.getElementById("daysel");
   [...(window.DAYS||[]).map(d=>[d.file,d.label]),["replica","Original reel replica (made-up trades)"]].forEach(([f,l])=>{const o=document.createElement("option");o.value=f;o.textContent=l;if(f===window.CUR_DAY)o.selected=true;sel.appendChild(o);});
